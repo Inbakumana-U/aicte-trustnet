@@ -67,6 +67,8 @@ aicte-trustnet/
 ├── start_all.bat         starts backend and frontend, opens the browser
 ├── start_backend.bat
 ├── start_frontend.bat
+├── render.yaml           Render blueprint for the FastAPI service
+├── .github/workflows/    keep-warm ping every 10 minutes
 └── README.md
 ```
 
@@ -121,6 +123,68 @@ npm run dev
 The database and demo ledger are created automatically on first boot. The seed
 is idempotent; use **Reset demo** in the UI (or `python backend/seed.py`) to
 restore the pristine ledger at any time.
+
+## Deployment (Vercel + Render)
+
+Free-tier setup with no database migration: Vercel serves the built frontend,
+Render runs the FastAPI API, and SQLite stays on the Render instance.
+
+| Piece | Host | Notes |
+| --- | --- | --- |
+| Frontend (`frontend/`) | Vercel | `frontend/vercel.json` adds the SPA rewrite |
+| Backend (`backend/`) | Render | `render.yaml` blueprint, free plan |
+| Database | Render instance | Ephemeral — the demo ledger reseeds on restart |
+| Keep-warm | GitHub Actions | `.github/workflows/keep-warm.yml`, every 10 min |
+
+### 1. Render backend
+
+1. Render Dashboard → **New → Blueprint** → select this repository → **Apply**.
+2. The blueprint creates `aicte-trustnet-api` from `render.yaml`.
+3. When prompted for `TRUSTNET_CORS_ORIGINS`, enter the Vercel origin
+   (e.g. `https://aicte-trustnet.vercel.app`). It can be edited later under
+   **Environment**.
+4. After the deploy, open
+   `https://aicte-trustnet-api.onrender.com/api/v1/health`.
+
+`run_backend.py` reads `PORT` and binds `0.0.0.0` on Render automatically;
+locally it still defaults to `127.0.0.1:8000`.
+
+### 2. Vercel frontend
+
+1. Vercel → **Add New → Project** → import the same repository.
+2. Set **Root Directory** to `frontend` (Vite is auto-detected).
+3. Add environment variable `VITE_API_BASE` =
+   `https://aicte-trustnet-api.onrender.com` (all environments).
+4. Deploy, then sign in at `https://<project>.vercel.app/login`.
+
+### 3. Allow the frontend origin
+
+The API accepts `localhost` by default. On Render set
+`TRUSTNET_CORS_ORIGINS` to the exact Vercel origin (comma-separate several).
+For preview deployments also set `TRUSTNET_CORS_ORIGIN_REGEX`, e.g.
+`^https://[a-z0-9-]+\.vercel\.app$`; omit it to keep previews blocked.
+
+### 4. Keep the API awake
+
+Render's free service sleeps after 15 minutes idle, so the next visitor waits
+~50 seconds. Once per repository:
+
+GitHub → **Settings → Secrets and variables → Actions → Variables → New**,
+name `TRUSTNET_API_BASE`, value `https://aicte-trustnet-api.onrender.com`.
+The `Keep API warm` workflow then hits `/api/v1/health` every 10 minutes
+(manual runs via the Actions tab). Scheduled workflows pause after 60 days
+without commits; any push re-enables them. If Actions are unavailable, point a
+free uptime monitor (cron-job.org, UptimeRobot) at the same URL every 5 minutes.
+
+### Hosting caveats
+
+- Uploads and resets are lost when Render restarts or redeploys; the ledger
+  returns to the seeded 58/60 + 100/120 state, which is the demo baseline.
+- The Ed25519 key is regenerated on restart, so previously downloaded passes
+  stop verifying; passes issued in the current session always match the
+  published key.
+- `TRUSTNET_ADMIN_TOKEN` stays `trustnet-reset` so **Reset demo** keeps
+  working. It is demo-only: anyone with the URL can restore the ledger.
 
 ## Demo walkthrough
 

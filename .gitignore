@@ -11,6 +11,11 @@ backend/apex_private.key
 frontend/node_modules/
 frontend/dist/
 
+# Local environment overrides
+.env
+.env.*
+!.env.example
+
 # Tooling
 .screenshots/
 *.log

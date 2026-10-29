@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: aicte-trustnet-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run_backend.py
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: TRUSTNET_ADMIN_TOKEN
+        value: trustnet-reset
+      - key: TRUSTNET_CORS_ORIGINS
+        sync: false
